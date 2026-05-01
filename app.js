@@ -1,3 +1,5 @@
+// 纯静态站点（Netlify）：数据与设置走 Supabase；AI 走 DeepSeek（见 index.html）
+
 const pageTitleMap = {
   generate: "AI 对话工作台",
   viral: "爆款灵感",
@@ -200,6 +202,403 @@ function normalizeSearchKeywords(v) {
   return [];
 }
 
+/* ---------- Supabase 选题库 + 设置 ---------- */
+
+function getSpeakSupabase() {
+  const client = window.__speakSupabase;
+  if (!client) {
+    throw new Error(
+      "Supabase 未初始化：请在 index.html 中先加载 SDK，并赋值 window.__speakSupabase = supabase.createClient(...)"
+    );
+  }
+  return client;
+}
+
+function sanitizeIlikeFragment(s) {
+  return String(s)
+    .trim()
+    .replace(/\\/g, "\\\\")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_")
+    .replace(/,/g, " ");
+}
+
+function mapTopicFromDB(row) {
+  if (!row) return null;
+  let kw = row.search_keywords;
+  if (typeof kw === "string") {
+    try {
+      kw = JSON.parse(kw);
+    } catch {
+      kw = [];
+    }
+  }
+  if (!Array.isArray(kw)) kw = [];
+  return {
+    ...row,
+    search_keywords: kw.map((x) => String(x).trim()).filter(Boolean)
+  };
+}
+
+async function fetchNextListSeq(sb) {
+  const { data, error } = await sb
+    .from("topics")
+    .select("list_seq")
+    .order("list_seq", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const m = data?.list_seq;
+  return (typeof m === "number" && Number.isFinite(m) ? m : 0) + 1;
+}
+
+async function insertTopicViaSupabase(topic) {
+  const sb = getSpeakSupabase();
+  const nextSeq = await fetchNextListSeq(sb);
+  const kw = Array.isArray(topic.search_keywords) ? topic.search_keywords : [];
+  const row = {
+    id: topic.id,
+    list_seq: nextSeq,
+    platform: topic.platform || "小红书",
+    status: topic.status || "待拍",
+    topic: topic.topic || "",
+    hook: topic.hook || "",
+    body: topic.body || "",
+    ending_cta: topic.ending_cta || "",
+    cover_title: topic.cover_title || "",
+    body_title: topic.body_title || "",
+    search_keywords: kw,
+    updated_at: new Date().toISOString()
+  };
+  const { error } = await sb.from("topics").insert(row);
+  if (error) throw new Error(error.message);
+}
+
+async function updateTopicViaSupabase(id, topic) {
+  const sb = getSpeakSupabase();
+  const kw = Array.isArray(topic.search_keywords) ? topic.search_keywords : [];
+  const { error } = await sb
+    .from("topics")
+    .update({
+      platform: topic.platform || "小红书",
+      status: topic.status || "待拍",
+      topic: topic.topic || "",
+      hook: topic.hook || "",
+      body: topic.body || "",
+      ending_cta: topic.ending_cta || "",
+      cover_title: topic.cover_title || "",
+      body_title: topic.body_title || "",
+      search_keywords: kw,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+async function deleteTopicViaSupabase(id) {
+  const sb = getSpeakSupabase();
+  const { error } = await sb.from("topics").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
+function defaultSettingsShape() {
+  return {
+    platform: "小红书",
+    personaName: "",
+    audienceProfile: "",
+    toneStyle: "朋友式共鸣",
+    toneDetails: "",
+    hookStyle: "",
+    bodyFramework: "",
+    ctaTemplate: "",
+    riskBlacklist: "",
+    coverTitleStyle: "",
+    bodyTitleStyle: "",
+    apiKey: ""
+  };
+}
+
+function mapSettingsRowFromDb(row) {
+  const d = defaultSettingsShape();
+  if (!row) return { ...d };
+  return {
+    platform: row.platform ?? d.platform,
+    personaName: row.persona_name ?? "",
+    audienceProfile: row.audience_profile ?? "",
+    toneStyle: row.tone_style ?? d.toneStyle,
+    toneDetails: row.tone_details ?? "",
+    hookStyle: row.hook_style ?? "",
+    bodyFramework: row.body_framework ?? "",
+    ctaTemplate: row.cta_template ?? "",
+    riskBlacklist: row.risk_blacklist ?? "",
+    coverTitleStyle: row.cover_title_style ?? "",
+    bodyTitleStyle: row.body_title_style ?? "",
+    apiKey: ""
+  };
+}
+
+function mergeClientSettings(storedSettings, bodySettings) {
+  const { apiKey: _a, ...restStored } = storedSettings || {};
+  const { apiKey: _b, ...restBody } = bodySettings || {};
+  return { ...defaultSettingsShape(), ...restStored, ...restBody };
+}
+
+function getDeepseekApiKey() {
+  return String(window.__DEEPSEEK_API_KEY || "").trim();
+}
+
+/* ---------- DeepSeek（浏览器） ---------- */
+
+function createMockItem(seed = "职场") {
+  return {
+    topic: `${seed}里最容易被低估的一件事：不是你不努力，是顺序错了`,
+    hook: `你有没有发现，同一件事别人做起来更轻松，不是你差，而是你一上来就卡在最难的那一步？`,
+    body: `先说结论：想把${seed}做出结果，先别急着硬扛，先把「顺序」调对，比盲目加时长有用得多。
+
+第一块，先搞清楚你到底卡在「不会做」还是「不想做」。很多人把拖延当成懒，其实是任务太大、入口太陡，大脑本能想逃。把第一步砍到 5 分钟能启动，比喊一百句自律都管用。
+
+第二块，再做减法，而不是再加技巧。同时追三个目标，等于一个都追不到。每周只留一个主目标，其它全部降级成「有空再说」，你的专注力会立刻不一样。这不是躺平，是给自己留赢面。
+
+第三块，用小步验证代替空想。想全是问题，做才有答案。每 3 天复盘一次：哪一步有效、哪一步纯属自我感动，把无效动作砍掉，有效动作加倍。你会发现进步比想象中快。
+
+这三块连起来，就是一条可照着念的口播骨架：先给结论，再分三层讲清楚，每层都要展开，别用一句话糊弄过去。`,
+    ending_cta: `如果你也在${seed}里反复内耗，先把顺序调一版试试。觉得有用就点赞收藏，关注我，后面继续拆更细的实操。`,
+    cover_title: `你不是不努力，是顺序一直错了`,
+    body_title: `${seed}提效｜先做减法再加速｜口播脚本结构`,
+    search_keywords: [`${seed}内耗怎么办`, `${seed}效率低`, `${seed}自律`, `口播脚本结构`]
+  };
+}
+
+function parseModelJsonContent(content) {
+  if (content == null || typeof content !== "string") {
+    throw new Error("模型返回内容为空");
+  }
+  let s = content.trim();
+  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) s = fence[1].trim();
+  try {
+    return JSON.parse(s);
+  } catch {
+    const start = s.indexOf("{");
+    const end = s.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(s.slice(start, end + 1));
+      } catch {
+        /* fall through */
+      }
+    }
+    throw new Error(`模型返回非合法 JSON：${s.slice(0, 160)}${s.length > 160 ? "…" : ""}`);
+  }
+}
+
+async function callDeepSeek({
+  apiKey,
+  systemPrompt,
+  userPrompt,
+  temperature = 0.8,
+  max_tokens = 4000,
+  jsonMode = true,
+  signal
+}) {
+  const body = {
+    model: "deepseek-chat",
+    temperature,
+    max_tokens,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt }
+    ]
+  };
+  if (jsonMode) body.response_format = { type: "json_object" };
+
+  const response = await fetch("https://api.deepseek.com/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`
+    },
+    body: JSON.stringify(body),
+    signal
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`DeepSeek API error: ${response.status} ${text}`);
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) throw new Error("DeepSeek returned empty content");
+  if (jsonMode) return parseModelJsonContent(content);
+  return String(content).trim();
+}
+
+function asStringArray(value) {
+  if (value == null) return [];
+  if (Array.isArray(value)) return value.map((v) => String(v).trim()).filter(Boolean);
+  if (typeof value === "string") {
+    const t = value.trim();
+    if (!t) return [];
+    if (t.startsWith("[")) {
+      try {
+        return asStringArray(JSON.parse(t));
+      } catch {
+        /* 按分隔符拆 */
+      }
+    }
+    return t
+      .split(/[,，、\n；;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  if (typeof value === "object") {
+    return Object.values(value)
+      .filter((v) => v != null && String(v).trim())
+      .map((v) => String(v).trim());
+  }
+  return [];
+}
+
+function normalizeGenerateItems(items) {
+  return (items || []).map((item) => ({
+    ...item,
+    search_keywords: asStringArray(item?.search_keywords)
+  }));
+}
+
+function normalizeViralPayload(raw) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { topics: [], titles: [], note: "" };
+  }
+  const base = raw.data && typeof raw.data === "object" && !Array.isArray(raw.data) ? raw.data : raw;
+  const raw2 = base.result && typeof base.result === "object" ? base.result : base;
+  const topics = asStringArray(
+    raw2.topics ??
+      raw2.Topics ??
+      raw2.topic_ideas ??
+      raw2.topic_list ??
+      raw2.选题 ??
+      raw2.选题方向 ??
+      raw2.angles ??
+      raw2.content_angles ??
+      raw2.ideas
+  );
+  const titles = asStringArray(
+    raw2.titles ??
+      raw2.Titles ??
+      raw2.viral_titles ??
+      raw2.hot_titles ??
+      raw2.title_list ??
+      raw2.爆款标题 ??
+      raw2.爆款标题列表 ??
+      raw2.keywords ??
+      raw2.search_keywords
+  );
+  const note = raw2.note != null ? String(raw2.note) : raw.note != null ? String(raw.note) : "";
+  return { topics, titles, note };
+}
+
+function mockViralAnalyze(seedTerm, sampleText) {
+  const topics = [
+    `为什么你越努力越焦虑：${seedTerm}里的认知陷阱`,
+    `${seedTerm}新手最容易踩的 3 个坑`,
+    `普通人如何把${seedTerm}做出结果：一条可复制的路径`
+  ];
+  const titles = [
+    `${seedTerm}别再硬扛了，这样调整反而更快`,
+    `我靠这 1 个习惯，把${seedTerm}从崩溃拉到稳定`,
+    `说点得罪人的大实话：${seedTerm}里 90% 的人输在起点`,
+    `${seedTerm}总内耗？不是你差，是方法错了`
+  ];
+  return {
+    topics,
+    titles,
+    note: sampleText
+      ? `已按关键词「${seedTerm}」与样本生成参考（离线示例）。`
+      : `已按关键词「${seedTerm}」生成选题与标题参考（离线示例）。`
+  };
+}
+
+async function runViralAnalyze({ seed, sample, signal } = {}) {
+  readSettingsFromUI();
+  const mergedSettings = state.settings;
+  const seedTerm =
+    String(seed || mergedSettings.personaName || mergedSettings.platform || "职场").trim() || "职场";
+  const sampleText = String(sample || "").trim();
+  const apiKey = getDeepseekApiKey();
+
+  if (!apiKey) {
+    const mock = mockViralAnalyze(seedTerm, sampleText);
+    return { source: "mock", ...mock };
+  }
+
+  const systemPrompt = `你是中文口播/短视频选题策划。用户给的样本只用于理解方向，禁止输出与样本逐句相同或高度近似的标题。
+必须输出纯 JSON，且只包含以下字段：
+- topics：字符串数组，6-10 条「可做口播的选题方向」，每条是一句话的选题名（不要写拍摄技巧、封面风格等）。
+- titles：字符串数组，10-16 条「爆款感标题」，适合抖音/小红书口播封面或标题，短、有钩子、口语化，不要夸张违禁承诺。
+- note：一句中文说明（可选，简述这批选题适配的人群或场景）。
+不要输出 JSON 以外的文字。不要输出封面风格、标题套路标签等元信息。`;
+
+  const userPrompt = `关键词 / 内容方向：${seedTerm}
+
+参考样本（可空；若有则借鉴方向，不复述原句）：
+${sampleText || "（无额外样本，仅按关键词拓展）"}
+
+请输出 topics、titles、note。`;
+
+  const raw = await callDeepSeek({
+    apiKey,
+    systemPrompt,
+    userPrompt,
+    temperature: 0.65,
+    max_tokens: 2000,
+    jsonMode: true,
+    signal
+  });
+  const normalized = normalizeViralPayload(raw);
+  const fallback = mockViralAnalyze(seedTerm, sampleText);
+  const topics = normalized.topics.length ? normalized.topics : fallback.topics;
+  const titles = normalized.titles.length ? normalized.titles : fallback.titles;
+  const note =
+    normalized.note ||
+    (sampleText ? `已结合样本，按「${seedTerm}」生成选题与标题。` : `已按「${seedTerm}」生成选题与标题。`);
+
+  return { source: "deepseek", topics, titles, note };
+}
+
+async function loadSettingsFromSupabase() {
+  const sb = getSpeakSupabase();
+  const { data, error } = await sb.from("app_settings").select("*").eq("id", 1).maybeSingle();
+  if (error) throw new Error(error.message);
+  state.settings = mapSettingsRowFromDb(data);
+  syncSettingsToUI();
+}
+
+async function saveSettingsToSupabase() {
+  readSettingsFromUI();
+  const sb = getSpeakSupabase();
+  const s = mergeClientSettings(state.settings, {});
+  const row = {
+    id: 1,
+    platform: s.platform,
+    persona_name: s.personaName,
+    audience_profile: s.audienceProfile,
+    tone_style: s.toneStyle,
+    tone_details: s.toneDetails,
+    hook_style: s.hookStyle,
+    body_framework: s.bodyFramework,
+    cta_template: s.ctaTemplate,
+    risk_blacklist: s.riskBlacklist,
+    cover_title_style: s.coverTitleStyle,
+    body_title_style: s.bodyTitleStyle,
+    api_key: "",
+    updated_at: new Date().toISOString()
+  };
+  const { error } = await sb.from("app_settings").upsert(row, { onConflict: "id" });
+  if (error) throw new Error(error.message);
+}
+
 function appendUserBubble(text) {
   if (!chatMessages) return;
   const raw = String(text ?? "");
@@ -295,12 +694,34 @@ async function submitChatMessage() {
   setComposerLoading(true, { stopMode: true });
   try {
     if (state.chatMode === "ask") {
-      const data = await postJSON(
-        "/api/chat",
-        { message: task, settings: state.settings },
-        { signal }
-      );
-      appendChatBubble("assistant", data.reply || "（无回复）");
+      const apiKey = getDeepseekApiKey();
+      if (!apiKey) {
+        appendChatBubble(
+          "assistant",
+          "当前为离线模式：在 index.html 里填写 window.__DEEPSEEK_API_KEY 后可使用 Ask 对话。"
+        );
+      } else {
+        const mergedSettings = state.settings;
+        const systemPrompt = `你是「灵芽-口播助手」的对话顾问，帮用户解决口播选题、文案结构、表达节奏、平台习惯等问题。
+回答要求：简洁、口语化、给可执行建议；不要编造数据；不要输出 JSON 或代码块，只输出自然段文字。
+最终必须严格输出一个 JSON 对象，且仅含字段 reply（字符串），reply 里写你要对用户说的全部内容。`;
+        const userPrompt = `用户问题：
+${task}
+
+（上下文：平台 ${mergedSettings.platform || "未填"}，人设 ${mergedSettings.personaName || "未填"}，受众 ${mergedSettings.audienceProfile || "未填"}）`;
+        const raw = await callDeepSeek({
+          apiKey,
+          systemPrompt,
+          userPrompt,
+          temperature: 0.7,
+          max_tokens: 2500,
+          jsonMode: true,
+          signal
+        });
+        const reply = String(raw?.reply ?? raw?.answer ?? raw?.text ?? "").trim();
+        if (!reply) throw new Error("模型未返回有效 reply 字段");
+        appendChatBubble("assistant", reply);
+      }
     } else {
       await handleGenerate({ task, inspiration: viralInspiration(), batchSize: 5, signal });
     }
@@ -439,7 +860,7 @@ async function upsertTopicFromRow(row) {
       node.tagName === "SELECT" ? String(node.value).trim() : node.textContent.trim();
     payload[key] = key === "search_keywords" ? value.split(",").map((k) => k.trim()).filter(Boolean) : value;
   });
-  await putJSON(`/api/topics/${id}`, payload);
+  await updateTopicViaSupabase(id, payload);
 }
 
 function renderChipList(container, items) {
@@ -530,110 +951,111 @@ function renderHotViralPanel(data) {
   if (source === "mock") {
     const hint = document.createElement("p");
     hint.className = "muted hot-source-hint";
-    hint.textContent = "当前为离线示例。在服务器环境变量中配置 DEEPSEEK_API_KEY 后可拉取真实分析。";
+    hint.textContent = "当前为离线示例。在 index.html 中配置 window.__DEEPSEEK_API_KEY 后可拉取真实分析。";
     wrap.appendChild(hint);
   }
 
   hotResultsPanel.appendChild(wrap);
 }
 
-async function postJSON(url, payload, options = {}) {
-  const { signal } = options;
-  const fetchOpts = {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  };
-  if (signal) fetchOpts.signal = signal;
-  const response = await fetch(url, fetchOpts);
-  const text = await response.text();
-  let result = {};
-  try {
-    result = text ? JSON.parse(text) : {};
-  } catch {
-    result = { message: text || "请求失败" };
-  }
-  if (!response.ok) {
-    throw new Error(result.message || `请求失败 (${response.status})`);
-  }
-  return result;
-}
-
-async function putJSON(url, payload) {
-  const response = await fetch(url, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  const text = await response.text();
-  let result = {};
-  try {
-    result = text ? JSON.parse(text) : {};
-  } catch {
-    result = { message: text || "请求失败" };
-  }
-  if (!response.ok) throw new Error(result.message || `请求失败 (${response.status})`);
-  return result;
-}
-
-async function deleteJSON(url) {
-  const response = await fetch(url, { method: "DELETE" });
-  if (!response.ok) {
-    const maybe = await response.text();
-    throw new Error(maybe || "删除失败");
-  }
-}
-
-async function getJSON(url) {
-  const response = await fetch(url);
-  const text = await response.text();
-  let result = {};
-  try {
-    result = text ? JSON.parse(text) : {};
-  } catch {
-    result = { message: text || "请求失败" };
-  }
-  if (!response.ok) throw new Error(result.message || `请求失败 (${response.status})`);
-  return result;
-}
-
-async function loadSettingsFromServer() {
-  state.settings = await getJSON("/api/settings");
-  syncSettingsToUI();
-}
-
 async function loadTopicsFromServer() {
-  const params = new URLSearchParams({
-    page: String(state.page),
-    pageSize: String(state.pageSize),
-    query: (librarySearch?.value || "").trim(),
-    platform: platformFilter?.value || "",
-    status: statusFilter?.value || ""
-  });
-  const data = await getJSON(`/api/topics?${params.toString()}`);
-  state.topics = data.items || [];
-  state.total = data.total || 0;
+  const sb = getSpeakSupabase();
+  const page = Math.max(state.page, 1);
+  const pageSize = Math.max(state.pageSize, 1);
+  const query = (librarySearch?.value || "").trim();
+  const platform = platformFilter?.value || "";
+  const status = statusFilter?.value || "";
+
+  let qb = sb.from("topics").select("*", { count: "exact" });
+
+  if (query) {
+    const p = `%${sanitizeIlikeFragment(query)}%`;
+    qb = qb.or(
+      `topic.ilike.${p},hook.ilike.${p},body.ilike.${p},ending_cta.ilike.${p},cover_title.ilike.${p},body_title.ilike.${p}`
+    );
+  }
+  if (platform && platform !== "全部平台") {
+    qb = qb.eq("platform", platform);
+  }
+  if (status && status !== "全部状态") {
+    qb = qb.eq("status", status);
+  }
+
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, error, count } = await qb.order("updated_at", { ascending: false }).range(from, to);
+
+  if (error) throw new Error(error.message);
+
+  state.topics = (data || []).map(mapTopicFromDB);
+  state.total = count ?? 0;
   renderLibraryTable();
 }
 
 async function handleGenerate({ task, inspiration = [], batchSize = 5, replaceIndex = null, signal } = {}) {
   readSettingsFromUI();
-  const reqOpts = signal ? { signal } : {};
-  const data = await postJSON(
-    "/api/generate",
-    {
-      settings: state.settings,
-      task,
-      inspiration,
-      batchSize
-    },
-    reqOpts
-  );
-  const items = (data.items || []).map((item) => ({
-    ...item,
-    id: randomId(),
-    search_keywords: normalizeSearchKeywords(item.search_keywords)
-  }));
+  const mergedSettings = mergeClientSettings(state.settings, {});
+  const seed = mergedSettings.personaName || mergedSettings.platform || "内容";
+  const apiKey = getDeepseekApiKey();
+  let items;
+
+  if (!apiKey) {
+    items = normalizeGenerateItems(
+      Array.from({ length: batchSize }, () => createMockItem(seed))
+    ).map((item) => ({
+      ...item,
+      id: randomId(),
+      search_keywords: normalizeSearchKeywords(item.search_keywords)
+    }));
+  } else {
+    const systemPrompt = `你是中文口播/小红书图文双栖的策划与撰稿人。输出必须原创，可借鉴结构节奏，禁止复刻他人原句。
+每条结果输出 JSON：{"items":[{topic,hook,body,ending_cta,cover_title,body_title,search_keywords}]}。
+
+标题与正文硬性要求（对标优质口播稿，拒绝短、空、清单式一笔带过）：
+1) cover_title（封面标题）：负责「让人在信息流里停一下」。多用戳痛点、给结果、做反差；禁止「今日感悟」「我的一点经验」「最近想明白了一件事」等自我、空洞概括；禁止纯文艺中心思想句。要像短视频封面一样，一眼让人感知「这和我有关」。
+2) body_title（正文标题）：负责「给系统分发、给搜索」。必须写清主题领域，嵌入可搜的核心词与长尾词（用户真实会搜的短语），避免「终于想通了」「真的会谢」等纯情绪、系统无法识别的标题。
+3) hook：口语化开场，提问/反常识/场景代入均可，要能接得住后面正文。
+4) body：口播正文，至少三大段，须明确标注「第一块」「第二块」「第三块」（或「第一，」「第二，」「第三，」）。每一段都要「展开讲透」：每段不少于 130 汉字，包含具体场景、对比、反例或mini案例中的至少一类，禁止每段只写一两句敷衍。全文 body 总字数建议 650～950 汉字（仅 body 字段）。可先有一句「先说结论」再分块。
+5) ending_cta：收束金句 + 引导点赞收藏关注，自然不尬。
+6) search_keywords：3～8 个，偏用户真实搜索用语的长尾词。`;
+
+    const userPrompt = `
+平台: ${mergedSettings.platform || ""}
+人设: ${mergedSettings.personaName || ""}
+目标用户: ${mergedSettings.audienceProfile || ""}
+语气: ${mergedSettings.toneStyle || ""}
+语气细节: ${mergedSettings.toneDetails || ""}
+开头偏好: ${mergedSettings.hookStyle || ""}
+正文结构: ${mergedSettings.bodyFramework || ""}
+结尾模板: ${mergedSettings.ctaTemplate || ""}
+禁用词: ${mergedSettings.riskBlacklist || ""}
+封面标题风格(补充): ${mergedSettings.coverTitleStyle || ""}
+正文标题风格(补充): ${mergedSettings.bodyTitleStyle || ""}
+灵感输入: ${JSON.stringify(inspiration)}
+需求: ${task}
+
+请生成 ${batchSize} 条结果，每条含 topic, hook, body, ending_cta, cover_title, body_title, search_keywords。
+再次强调：body 必须三大块且每块充分展开，总字数达标；cover_title 与 body_title 各司其职，勿写成同一种空泛标题。`;
+
+    const result = await callDeepSeek({
+      apiKey,
+      systemPrompt,
+      userPrompt,
+      max_tokens: 8192,
+      jsonMode: true,
+      signal
+    });
+    items = normalizeGenerateItems(result.items || []).map((item) => ({
+      ...item,
+      id: randomId(),
+      search_keywords: normalizeSearchKeywords(item.search_keywords)
+    }));
+    if (!items.length) {
+      throw new Error("模型未返回任何 items，请重试或缩短需求描述");
+    }
+  }
+
   if (!items.length) {
     throw new Error("模型未返回选题包，请重试或换种说法");
   }
@@ -643,9 +1065,10 @@ async function handleGenerate({ task, inspiration = [], batchSize = 5, replaceIn
     state.generated = items;
   }
   renderGeneratedCards();
-  const summaries = replaceIndex !== null && replaceIndex >= 0 && items.length > 0
-    ? [{ idx: replaceIndex + 1, item: items[0] }]
-    : items.map((item, i) => ({ idx: i + 1, item }));
+  const summaries =
+    replaceIndex !== null && replaceIndex >= 0 && items.length > 0
+      ? [{ idx: replaceIndex + 1, item: items[0] }]
+      : items.map((item, i) => ({ idx: i + 1, item }));
   summaries.forEach(({ idx, item }) => {
     const summary = `【选题${idx}】${item.topic}\n\n${item.hook}\n\n${item.body}\n\n${item.ending_cta}`;
     appendChatBubble("assistant", summary);
@@ -694,7 +1117,7 @@ function initEvents() {
       status: "待拍"
     }));
     try {
-      await Promise.all(mapped.map((item) => postJSON("/api/topics", item)));
+      await Promise.all(mapped.map((item) => insertTopicViaSupabase(item)));
       await loadTopicsFromServer();
       showToast(saveGeneratedBtn, "已保存到选题库", "保存全部到选题库", 1200);
     } catch (error) {
@@ -714,7 +1137,7 @@ function initEvents() {
       if (!item) return;
       setButtonLoading(button, "保存中...", true);
       try {
-        await postJSON("/api/topics", {
+        await insertTopicViaSupabase({
           ...item,
           id: randomId(),
           platform: state.settings.platform || "小红书",
@@ -771,7 +1194,7 @@ function initEvents() {
       body_title: "正文标题",
       search_keywords: ["用户搜索词"]
     };
-    await postJSON("/api/topics", newItem);
+    await insertTopicViaSupabase(newItem);
     await loadTopicsFromServer();
   });
 
@@ -792,7 +1215,7 @@ function initEvents() {
     if (!button) return;
     const row = button.closest("tr");
     if (!row?.dataset.id) return;
-    await deleteJSON(`/api/topics/${row.dataset.id}`);
+    await deleteTopicViaSupabase(row.dataset.id);
     await loadTopicsFromServer();
   });
 
@@ -821,9 +1244,12 @@ function initEvents() {
   });
 
   saveSettingsBtn?.addEventListener("click", async () => {
-    readSettingsFromUI();
-    await putJSON("/api/settings", state.settings);
-    showToast(saveSettingsBtn, "已保存", "保存");
+    try {
+      await saveSettingsToSupabase();
+      showToast(saveSettingsBtn, "已保存", "保存");
+    } catch (e) {
+      appendChatBubble("assistant", `保存设置失败：${e.message}`);
+    }
   });
 
   fetchHotBtn?.addEventListener("click", async () => {
@@ -835,11 +1261,7 @@ function initEvents() {
     }
     setButtonLoading(fetchHotBtn, "获取中...", true);
     try {
-      const raw = await postJSON("/api/viral/analyze", {
-        seed,
-        sample: seed,
-        settings: state.settings
-      });
+      const raw = await runViralAnalyze({ seed, sample: seed });
       const data = coerceViralApiPayload(raw);
       state.latestViral.topics = data.topics;
       state.latestViral.titles = data.titles;
@@ -875,14 +1297,12 @@ function initEvents() {
 
   viralAnalyzeBtn?.addEventListener("click", async () => {
     readSettingsFromUI();
-    const payload = {
-      seed: viralSeedInput.value.trim(),
-      sample: viralSampleInput.value.trim(),
-      settings: state.settings
-    };
     setButtonLoading(viralAnalyzeBtn, "分析中...", true);
     try {
-      const raw = await postJSON("/api/viral/analyze", payload);
+      const raw = await runViralAnalyze({
+        seed: viralSeedInput.value.trim(),
+        sample: viralSampleInput.value.trim()
+      });
       const data = coerceViralApiPayload(raw);
       renderChipList(viralPatterns, data.titles);
       renderTrendList(viralAngles, data.topics);
@@ -912,32 +1332,33 @@ function initEvents() {
 }
 
 async function bootstrap() {
-  let apiReachable = false;
-  try {
-    const r = await fetch("/api/health");
-    apiReachable = r.ok;
-  } catch {
-    apiReachable = false;
-  }
-  if (!apiReachable) {
+  if (!window.__speakSupabase) {
     appendChatBubble(
       "assistant",
-      "未连接到后端。请在本项目目录执行 npm start，按终端里打印的地址打开（默认 http://localhost:3040，可在 .env 里改 PORT）。勿用本地文件 file:// 打开。"
+      "未初始化 Supabase：请在 index.html 中先引入 @supabase/supabase-js，并设置 window.__speakSupabase = supabase.createClient(项目URL, anon密钥)。"
     );
   }
 
   try {
-    await loadSettingsFromServer();
+    await loadSettingsFromSupabase();
   } catch (error) {
-    if (apiReachable) appendChatBubble("assistant", `加载设置失败：${error.message}`);
+    if (window.__speakSupabase) {
+      appendChatBubble("assistant", `加载设置失败：${error.message}`);
+    }
   }
 
   renderGeneratedCards();
 
   try {
     await loadTopicsFromServer();
-  } catch {
-    /* 无后端时忽略选题库 */
+  } catch (e) {
+    if (window.__speakSupabase) {
+      appendChatBubble("assistant", `选题库加载失败：${e.message}`);
+    }
+  }
+
+  if (!getDeepseekApiKey()) {
+    console.info("[灵芽口播] 未配置 window.__DEEPSEEK_API_KEY：生成 / Ask / 爆款分析使用离线示例。");
   }
 
   initEvents();

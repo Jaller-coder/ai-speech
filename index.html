@@ -188,12 +188,15 @@
       </main>
     </div>
 
-    <script src="./app.js"></script>
-        <script>
-      const supabase = window.supabase.createClient(
-        'https://qidztlphumscjkefhkmm.supabase.co',
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpZHp0bHBodW1zY2prZWZoa21tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2NjkzNDAsImV4cCI6MjA5MjI0NTM0MH0.y7U3xK-PfZHf_tVYW9ptPlBoBPZ9koWNsWDZn4gC6F0'
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+      window.__speakSupabase = window.supabase.createClient(
+        "https://qidztlphumscjkefhkmm.supabase.co",
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpZHp0bHBodW1zY2prZWZoa21tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2NjkzNDAsImV4cCI6MjA5MjI0NTM0MH0.y7U3xK-PfZHf_tVYW9ptPlBoBPZ9koWNsWDZn4gC6F0"
       );
+      /** 填入 DeepSeek API Key 后启用真实生成与对话；留空为离线示例。 */
+      window.__DEEPSEEK_API_KEY = "";
     </script>
+    <script defer src="./app.js"></script>
   </body>
 </html>

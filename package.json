@@ -1,16 +1,5 @@
 {
   "name": "ai-speech",
   "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "node --watch server.js"
-  },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.49.8",
-    "dotenv": "^17.4.2",
-    "express": "^4.21.2"
-  }
+  "private": true
 }
