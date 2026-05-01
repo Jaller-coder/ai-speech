@@ -189,14 +189,15 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- NETLIFY_CONFIG_START：由 `node scripts/netlify-inject.mjs` 在构建时写入密钥；勿手动填密钥进仓库 -->
     <script>
-      window.__speakSupabase = window.supabase.createClient(
-        "https://qidztlphumscjkefhkmm.supabase.co",
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpZHp0bHBodW1zY2prZWZoa21tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY2NjkzNDAsImV4cCI6MjA5MjI0NTM0MH0.y7U3xK-PfZHf_tVYW9ptPlBoBPZ9koWNsWDZn4gC6F0"
-      );
-      /** 填入 DeepSeek API Key 后，生成 / Ask / 爆款分析会走真实模型；留空则使用离线示例。 */
+      window.__speakSupabase = window.supabase.createClient("", "");
       window.__DEEPSEEK_API_KEY = "";
     </script>
+    <!-- NETLIFY_CONFIG_END -->
     <script defer src="./app.js"></script>
+    <script>
+      window.__DEEPSEEK_API_KEY = 'DEEPSEEK_API_KEY_PLACEHOLDER';
+    </script>
   </body>
 </html>

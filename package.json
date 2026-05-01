@@ -1,5 +1,9 @@
 {
   "name": "ai-speech",
   "version": "1.0.0",
-  "private": true
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "inject": "node scripts/netlify-inject.mjs"
+  }
 }
