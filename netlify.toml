@@ -1,8 +1,3 @@
-# 构建前注入环境变量到 index.html（DeepSeek + Supabase）
-# Netlify → Site configuration → Environment variables：
-#   DEEPSEEK_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY
 [build]
   publish = "."
   command = "node scripts/netlify-inject.mjs"
-[build]
-  command = "sed -i 's/DEEPSEEK_API_KEY_PLACEHOLDER/$DEEPSEEK_API_KEY/g' index.html"

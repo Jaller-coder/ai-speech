@@ -38,23 +38,25 @@ function loadDotEnv() {
 }
 loadDotEnv();
 
-const supabaseUrl = (process.env.SUPABASE_URL || "").trim().replace(/\/$/, "");
-const supabaseAnon = (process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "").trim();
-const deepseek = (process.env.DEEPSEEK_API_KEY || "").trim();
+const env = {
+  SUPABASE_URL: (process.env.SUPABASE_URL || "").trim().replace(/\/$/, ""),
+  SUPABASE_ANON_KEY: (process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "").trim(),
+  DEEPSEEK_API_KEY: (process.env.DEEPSEEK_API_KEY || "").trim()
+};
 
 const onNetlify = process.env.NETLIFY === "true" || process.env.CONTEXT === "production" || process.env.CONTEXT === "deploy-preview";
 
 if (onNetlify) {
-  if (!deepseek) {
+  if (!env.DEEPSEEK_API_KEY) {
     console.error("[netlify-inject] 缺少环境变量 DEEPSEEK_API_KEY，请在 Netlify 中配置。");
     process.exit(1);
   }
-  if (!supabaseUrl || !supabaseAnon) {
+  if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
     console.error("[netlify-inject] 缺少 SUPABASE_URL 或 SUPABASE_ANON_KEY，请在 Netlify 中配置。");
     process.exit(1);
   }
 } else {
-  if (!deepseek || !supabaseUrl || !supabaseAnon) {
+  if (!env.DEEPSEEK_API_KEY || !env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
     console.warn(
       "[netlify-inject] 未设置完整环境变量：将写入空配置（本地离线）。线上部署请务必在 Netlify 配置三项密钥。"
     );
@@ -64,10 +66,10 @@ if (onNetlify) {
 const injected = `<!-- NETLIFY_CONFIG_START：由 \`node scripts/netlify-inject.mjs\` 在构建时写入密钥；勿手动填密钥进仓库 -->
     <script>
       window.__speakSupabase = window.supabase.createClient(
-        ${JSON.stringify(supabaseUrl)},
-        ${JSON.stringify(supabaseAnon)}
+        ${JSON.stringify(env.SUPABASE_URL)},
+        ${JSON.stringify(env.SUPABASE_ANON_KEY)}
       );
-      window.__DEEPSEEK_API_KEY = ${JSON.stringify(deepseek)};
+      window.__DEEPSEEK_API_KEY = ${JSON.stringify(env.DEEPSEEK_API_KEY)};
     </script>
     <!-- NETLIFY_CONFIG_END -->`;
 
@@ -77,9 +79,11 @@ if (!pattern.test(html)) {
   console.error("[netlify-inject] index.html 中未找到 NETLIFY_CONFIG 标记块。");
   process.exit(1);
 }
-html = html.replace(pattern, injected);
+html = html
+  .replace(pattern, injected)
+  .replace(/DEEPSEEK_API_KEY_PLACEHOLDER/g, env.DEEPSEEK_API_KEY);
 writeFileSync(indexPath, html, "utf8");
 
 console.log(
-  `[netlify-inject] 已写入 index.html · DeepSeek: ${Boolean(deepseek)} · Supabase URL: ${Boolean(supabaseUrl)} · Anon key: ${Boolean(supabaseAnon)}`
+  `[netlify-inject] 已写入 index.html · DeepSeek: ${Boolean(env.DEEPSEEK_API_KEY)} · Supabase URL: ${Boolean(env.SUPABASE_URL)} · Anon key: ${Boolean(env.SUPABASE_ANON_KEY)}`
 );
