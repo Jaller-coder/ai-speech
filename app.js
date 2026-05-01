@@ -208,7 +208,7 @@ function getSpeakSupabase() {
   const client = window.__speakSupabase;
   if (!client) {
     throw new Error(
-      "Supabase 未初始化：请在 index.html 中先加载 SDK，并赋值 window.__speakSupabase = supabase.createClient(...)"
+      "Supabase 未初始化：请在 index.html 中先加载 @supabase/supabase-js，并设置 window.__speakSupabase = supabase.createClient(项目URL, anon密钥)"
     );
   }
   return client;
@@ -300,6 +300,8 @@ async function deleteTopicViaSupabase(id) {
   const { error } = await sb.from("topics").delete().eq("id", id);
   if (error) throw new Error(error.message);
 }
+
+/* ---------- 设置（app_settings）与 DeepSeek ---------- */
 
 function defaultSettingsShape() {
   return {
@@ -698,7 +700,7 @@ async function submitChatMessage() {
       if (!apiKey) {
         appendChatBubble(
           "assistant",
-          "当前为离线模式：在 index.html 里填写 window.__DEEPSEEK_API_KEY 后可使用 Ask 对话。"
+          "当前为离线模式：在 index.html 里配置 window.__DEEPSEEK_API_KEY 后可使用 Ask 对话。"
         );
       } else {
         const mergedSettings = state.settings;
