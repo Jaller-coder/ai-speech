@@ -23,7 +23,7 @@
 | 禁用词与风险词 | `risk_blacklist` | 安全过滤，规避违规表达 |
 | 封面标题风格 | `cover_title_style` | 控制封面标题长度与情绪度 |
 | 正文标题风格 | `body_title_style` | 控制正文标题稳健度 |
-| 爆款灵感来源 | `inspiration_inputs` | 只借鉴角度和结构，不复刻内容 |
+| 爆款参考（侧栏注入） | `inspiration_inputs` | 只借鉴角度和结构，不复刻内容 |
 
 ---
 

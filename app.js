@@ -2,7 +2,6 @@
 
 const pageTitleMap = {
   generate: "AI 对话工作台",
-  viral: "爆款灵感",
   library: "选题库",
   settings: "设置"
 };
@@ -92,12 +91,6 @@ const hotSeedInput = document.getElementById("hot-seed-input");
 const fetchHotBtn = document.getElementById("fetch-hot-btn");
 const injectHotBtn = document.getElementById("inject-hot-btn");
 const hotResultsPanel = document.getElementById("hot-results-panel");
-const viralAnalyzeBtn = document.getElementById("viral-analyze-btn");
-const viralGenerateCopyBtn = document.getElementById("viral-generate-copy-btn");
-const viralSampleInput = document.getElementById("viral-sample-input");
-const viralSeedInput = document.getElementById("viral-seed-input");
-const viralPatterns = document.getElementById("viral-patterns");
-const viralAngles = document.getElementById("viral-angles");
 const saveSettingsBtn = document.getElementById("save-settings-btn");
 
 const settingFields = {
@@ -684,6 +677,15 @@ function isAbortError(err) {
   return err && (err.name === "AbortError" || err.code === 20);
 }
 
+/** 不向用户暴露模型原始 JSON / parse 细节 */
+function userVisibleSendError(error) {
+  const msg = String(error?.message || error || "");
+  if (/非合法 JSON|JSON\.parse|Unexpected token/i.test(msg)) {
+    return "回复未能完整解析，请缩短问题或稍后重试。";
+  }
+  return msg ? `发送失败：${msg}` : "发送失败，请稍后重试。";
+}
+
 async function submitChatMessage() {
   const task = chatTaskInput?.value?.trim() || "";
   if (!task) return;
@@ -705,24 +707,23 @@ async function submitChatMessage() {
       } else {
         const mergedSettings = state.settings;
         const systemPrompt = `你是「灵芽-口播助手」的对话顾问，帮用户解决口播选题、文案结构、表达节奏、平台习惯等问题。
-回答要求：简洁、口语化、给可执行建议；不要编造数据；不要输出 JSON 或代码块，只输出自然段文字。
-最终必须严格输出一个 JSON 对象，且仅含字段 reply（字符串），reply 里写你要对用户说的全部内容。`;
+回答要求：简洁、口语化、给可执行建议；不要编造数据；直接输出自然段文字，不要使用 JSON、代码块或 markdown 围栏。`;
         const userPrompt = `用户问题：
 ${task}
 
 （上下文：平台 ${mergedSettings.platform || "未填"}，人设 ${mergedSettings.personaName || "未填"}，受众 ${mergedSettings.audienceProfile || "未填"}）`;
-        const raw = await callDeepSeek({
+        const reply = await callDeepSeek({
           apiKey,
           systemPrompt,
           userPrompt,
           temperature: 0.7,
-          max_tokens: 2500,
-          jsonMode: true,
+          max_tokens: 4096,
+          jsonMode: false,
           signal
         });
-        const reply = String(raw?.reply ?? raw?.answer ?? raw?.text ?? "").trim();
-        if (!reply) throw new Error("模型未返回有效 reply 字段");
-        appendChatBubble("assistant", reply);
+        const text = String(reply ?? "").trim();
+        if (!text) throw new Error("模型返回为空");
+        appendChatBubble("assistant", text);
       }
     } else {
       await handleGenerate({ task, inspiration: viralInspiration(), batchSize: 5, signal });
@@ -731,7 +732,7 @@ ${task}
     if (isAbortError(error)) {
       appendChatBubble("assistant", "已停止生成。");
     } else {
-      appendChatBubble("assistant", `发送失败：${error.message || error}`);
+      appendChatBubble("assistant", userVisibleSendError(error));
     }
   } finally {
     state.chatAbortController = null;
@@ -863,25 +864,6 @@ async function upsertTopicFromRow(row) {
     payload[key] = key === "search_keywords" ? value.split(",").map((k) => k.trim()).filter(Boolean) : value;
   });
   await updateTopicViaSupabase(id, payload);
-}
-
-function renderChipList(container, items) {
-  container.innerHTML = "";
-  items.forEach((value) => {
-    const chip = document.createElement("span");
-    chip.className = "chip";
-    chip.textContent = value;
-    container.appendChild(chip);
-  });
-}
-
-function renderTrendList(container, items) {
-  container.innerHTML = "";
-  items.forEach((value) => {
-    const li = document.createElement("li");
-    li.textContent = value;
-    container.appendChild(li);
-  });
 }
 
 function renderHotViralPanel(data) {
@@ -1295,41 +1277,6 @@ function initEvents() {
     if (!parts.length) return;
     const summary = `${parts.join("。")}。请据此生成内容。`;
     chatTaskInput.value = chatTaskInput.value ? `${chatTaskInput.value}\n${summary}` : summary;
-  });
-
-  viralAnalyzeBtn?.addEventListener("click", async () => {
-    readSettingsFromUI();
-    setButtonLoading(viralAnalyzeBtn, "分析中...", true);
-    try {
-      const raw = await runViralAnalyze({
-        seed: viralSeedInput.value.trim(),
-        sample: viralSampleInput.value.trim()
-      });
-      const data = coerceViralApiPayload(raw);
-      renderChipList(viralPatterns, data.titles);
-      renderTrendList(viralAngles, data.topics);
-      state.latestViral.topics = data.topics;
-      state.latestViral.titles = data.titles;
-      state.latestViral.note = data.note || "";
-    } finally {
-      setButtonLoading(viralAnalyzeBtn, "分析中...", false);
-    }
-  });
-
-  viralGenerateCopyBtn?.addEventListener("click", async () => {
-    readSettingsFromUI();
-    const task = `根据这些爆款角度生成原创文案，方向：${viralSeedInput.value.trim() || "职场成长"}`;
-    switchPage("generate");
-    chatTaskInput.value = task;
-    appendChatBubble("user", task);
-    setButtonLoading(viralGenerateCopyBtn, "生成中...", true);
-    try {
-      await handleGenerate({ task, inspiration: viralInspiration(), batchSize: 3 });
-    } catch (error) {
-      appendChatBubble("assistant", `生成失败：${error.message}`);
-    } finally {
-      setButtonLoading(viralGenerateCopyBtn, "生成中...", false);
-    }
   });
 }
 

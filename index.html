@@ -12,7 +12,6 @@
         <div class="brand">灵芽-口播助手</div>
         <nav class="menu">
           <button class="menu-item active" data-page="generate">AI 对话</button>
-          <button class="menu-item" data-page="viral">爆款灵感</button>
           <button class="menu-item" data-page="library">选题库</button>
           <button class="menu-item" data-page="settings">设置</button>
         </nav>
@@ -65,36 +64,6 @@
             <div id="generated-list"></div>
             <div class="item-actions">
               <button class="primary" id="save-generated">保存全部到选题库</button>
-            </div>
-          </div>
-        </section>
-
-        <section id="viral" class="page">
-          <div class="card sketch">
-            <h2>爆款灵感</h2>
-            <p class="muted">贴几条参考或只填方向：先点「获取选题与标题」，再点「生成口播文案」。</p>
-            <div class="viral-grid">
-              <div>
-                <label>参考样本（可空）
-                  <textarea id="viral-sample-input" rows="4" placeholder="粘贴链接或几条爆款标题"></textarea>
-                </label>
-                <label>内容方向
-                  <input id="viral-seed-input" placeholder="例如：职场成长、情绪管理" />
-                </label>
-                <div class="actions viral-actions-compact">
-                  <button class="primary" id="viral-analyze-btn">获取选题与标题</button>
-                </div>
-              </div>
-              <div>
-                <h3>结果</h3>
-                <p class="muted small-label">爆款标题</p>
-                <div class="chip-list" id="viral-patterns"></div>
-                <p class="muted small-label">选题方向</p>
-                <ul class="trend-list" id="viral-angles"></ul>
-              </div>
-            </div>
-            <div class="actions viral-actions-compact">
-              <button class="primary" id="viral-generate-copy-btn">生成口播文案</button>
             </div>
           </div>
         </section>
