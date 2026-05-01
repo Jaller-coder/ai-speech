@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>灵芽-口播助手</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="top-nav">
+        <div class="brand">灵芽-口播助手</div>
+        <nav class="menu">
+          <button class="menu-item active" data-page="generate">AI 对话</button>
+          <button class="menu-item" data-page="viral">爆款灵感</button>
+          <button class="menu-item" data-page="library">选题库</button>
+          <button class="menu-item" data-page="settings">设置</button>
+        </nav>
+      </header>
+
+      <main class="main">
+        <h1 id="page-title">AI 对话工作台</h1>
+
+        <section id="generate" class="page active">
+          <section class="chat-layout">
+            <aside class="chat-left card sketch viral-side-panel">
+              <h2>爆款参考</h2>
+              <p class="muted tight-bottom">输入关键词，获取可做口播的选题方向与爆款标题。</p>
+              <label class="tight-label">关键词
+                <input id="hot-seed-input" type="search" enterkeyhint="search" placeholder="例如：职场焦虑、转行、副业" />
+              </label>
+              <div class="actions viral-side-actions">
+                <button class="primary" id="fetch-hot-btn">获取爆款</button>
+              </div>
+              <div class="hot-results-panel" id="hot-results-panel" aria-live="polite">
+                <p class="hot-results-placeholder muted">输入关键词后点击「获取爆款」。</p>
+              </div>
+              <button class="secondary viral-inject-btn" id="inject-hot-btn">一键注入到对话</button>
+            </aside>
+
+            <section class="chat-main card sketch">
+              <div class="chat-messages" id="chat-messages"></div>
+              <div class="chat-composer">
+                <div class="chat-mode-bar" role="tablist" aria-label="对话模式">
+                  <button type="button" class="mode-pill active" data-mode="agent" id="mode-agent" role="tab" aria-selected="true">Agent</button>
+                  <button type="button" class="mode-pill" data-mode="ask" id="mode-ask" role="tab" aria-selected="false">Ask</button>
+                </div>
+                <div class="chat-composer-row">
+                  <textarea
+                    id="chat-task-input"
+                    rows="3"
+                    placeholder="Enter 发送 · Shift+Enter 换行。Agent：生成口播选题包；Ask：闲聊答疑"
+                  ></textarea>
+                  <button type="button" class="chat-send-btn" id="chat-send-btn" title="发送" aria-label="发送">
+                    <span class="chat-send-icon" aria-hidden="true">↑</span>
+                  </button>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <div class="card sketch">
+            <h2>最新生成结果</h2>
+            <p class="muted">不满意可以直接改，改完点击保存。</p>
+            <div id="generated-list"></div>
+            <div class="item-actions">
+              <button class="primary" id="save-generated">保存全部到选题库</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="viral" class="page">
+          <div class="card sketch">
+            <h2>爆款灵感</h2>
+            <p class="muted">贴几条参考或只填方向：先点「获取选题与标题」，再点「生成口播文案」。</p>
+            <div class="viral-grid">
+              <div>
+                <label>参考样本（可空）
+                  <textarea id="viral-sample-input" rows="4" placeholder="粘贴链接或几条爆款标题"></textarea>
+                </label>
+                <label>内容方向
+                  <input id="viral-seed-input" placeholder="例如：职场成长、情绪管理" />
+                </label>
+                <div class="actions viral-actions-compact">
+                  <button class="primary" id="viral-analyze-btn">获取选题与标题</button>
+                </div>
+              </div>
+              <div>
+                <h3>结果</h3>
+                <p class="muted small-label">爆款标题</p>
+                <div class="chip-list" id="viral-patterns"></div>
+                <p class="muted small-label">选题方向</p>
+                <ul class="trend-list" id="viral-angles"></ul>
+              </div>
+            </div>
+            <div class="actions viral-actions-compact">
+              <button class="primary" id="viral-generate-copy-btn">生成口播文案</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="library" class="page">
+          <div class="card sketch">
+            <h2>选题库</h2>
+            <div class="filters">
+              <input id="library-search" placeholder="搜索选题、标题、关键词" />
+              <select id="library-platform-filter">
+                <option>全部平台</option>
+                <option>小红书</option>
+                <option>抖音</option>
+                <option>公众号</option>
+              </select>
+              <select id="library-status-filter">
+                <option>全部状态</option>
+                <option>待拍</option>
+                <option>已拍</option>
+                <option>草稿</option>
+              </select>
+              <button class="primary" id="add-topic-row">+ 新增选题</button>
+            </div>
+            <div class="table-wrap">
+              <table id="topic-table">
+                <thead>
+                  <tr>
+                    <th class="library-col-seq">序号</th>
+                    <th>平台</th>
+                    <th>状态</th>
+                    <th>选题</th>
+                    <th>开头钩子</th>
+                    <th class="library-col-body">正文</th>
+                    <th>结尾升华 + 一键三连</th>
+                    <th>封面标题</th>
+                    <th>正文标题</th>
+                    <th>用户搜索词</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="topic-table-body"></tbody>
+              </table>
+            </div>
+            <div class="actions" id="library-pagination">
+              <button class="secondary" id="prev-page-btn">上一页</button>
+              <span class="muted" id="page-info">第 1 / 1 页</span>
+              <button class="secondary" id="next-page-btn">下一页</button>
+            </div>
+            <p class="muted">格子里的修改会自动保存；序号在「新增选题」或从生成区保存时自动递增。</p>
+          </div>
+        </section>
+
+        <section id="settings" class="page">
+          <div class="card sketch">
+            <h2>生成偏好</h2>
+            <p class="muted">只保留最常用的几项；保存后会用于对话与生成接口播。</p>
+            <div class="grid-2 settings-simple">
+              <label>默认平台
+                <select id="setting-platform">
+                  <option>小红书</option>
+                  <option>抖音</option>
+                  <option>公众号</option>
+                </select>
+              </label>
+              <label>语气风格
+                <select id="setting-tone-style">
+                  <option>朋友式共鸣</option>
+                  <option>干货结构化</option>
+                  <option>犀利直给</option>
+                  <option>温柔陪伴</option>
+                </select>
+              </label>
+              <label class="settings-span-2">账号人设
+                <input id="setting-persona-name" placeholder="例如：职场学姐、情绪陪跑" />
+              </label>
+              <label class="settings-span-2">讲给谁听
+                <input id="setting-audience-profile" placeholder="例如：想转行的打工人、容易焦虑的年轻人" />
+              </label>
+              <label class="settings-span-2">禁忌词（逗号分隔）
+                <input id="setting-risk-blacklist" placeholder="稳赚、包治、100%有效" />
+              </label>
+              <label class="settings-span-2">补充说明（可选）
+                <textarea id="setting-tone-details" rows="2" placeholder="例如：口语短句、少术语、多举生活例子"></textarea>
+              </label>
+            </div>
+            <div class="actions">
+              <button class="primary" id="save-settings-btn">保存</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
